@@ -1,0 +1,209 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>FWD — Login</title>
+  <link rel="stylesheet" href="styles.css">
+
+  <style>
+    /* page-specific only */
+    .loginWrap{
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      padding:20px;
+    }
+    .loginCard{
+      max-width:440px;
+      width:100%;
+    }
+    .loginTitle{
+      font-size:18px;
+      font-weight:1000;
+      margin:0;
+    }
+    .loginSub{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:13px;
+      font-weight:800;
+    }
+    .input{
+      width:100%;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      outline:none;
+      font-weight:800;
+    }
+    .input:focus{
+      border-color: rgba(40,199,183,.45);
+      box-shadow: 0 0 0 3px rgba(40,199,183,.12);
+    }
+    .formRow{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      margin-top:10px;
+    }
+    .loginBtnBig{
+      width:100%;
+      padding:14px 16px;
+      font-size:15px;
+      font-weight:1000;
+      border-radius:16px;
+      margin-top:14px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="loginWrap">
+    <div class="card loginCard">
+      <div class="cardHead">
+        <h1 class="loginTitle">Welcome back</h1>
+        <div class="loginSub">Sign in to continue to FWD</div>
+      </div>
+
+      <div class="err" id="errBox"></div>
+      <div class="ok" id="okBox"></div>
+
+      <div class="cardBody">
+        <div class="formRow">
+          <div class="label">Email</div>
+          <input
+            class="input"
+            id="email"
+            type="email"
+            placeholder="name@company.com"
+            autocomplete="username"
+          >
+        </div>
+
+        <div class="formRow">
+          <div class="label">Password</div>
+          <div class="passwordWrap">
+            <input
+              class="input"
+              id="password"
+             type="password"
+             placeholder="••••••••"
+              autocomplete="current-password"
+            >
+            <button
+              type="button"
+              class="togglePwd"
+              id="togglePwdBtn"
+              aria-label="Show password"
+            >
+    👁
+        </button>
+        </div>
+
+        </div>
+
+        <button class="btn primary loginBtnBig" id="loginBtn">
+          Login
+        </button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API = "http://localhost:3001";
+
+  async function apiFetch(path, opts = {}) {
+    return fetch(API + path, {
+      ...opts,
+      credentials: "include",
+      headers: { "Content-Type":"application/json", ...(opts.headers||{}) }
+    });
+  }
+
+  function showErr(msg){
+    const e = document.getElementById("errBox");
+    const ok = document.getElementById("okBox");
+    ok.style.display="none";
+    e.style.display="block";
+    e.textContent = msg;
+  }
+
+  function showOk(msg){
+    const ok = document.getElementById("okBox");
+    const e = document.getElementById("errBox");
+    e.style.display="none";
+    ok.style.display="block";
+    ok.textContent = msg;
+  }
+
+  function clearMsgs(){
+    document.getElementById("errBox").style.display="none";
+    document.getElementById("okBox").style.display="none";
+  }
+
+  function routeByRole(role){
+    const r = String(role||"").toLowerCase();
+    if (r === "admin") return "admin-work-orders.html";
+    if (r === "dispatcher") return "dispatcher-work-orders.html";
+    if (r === "team_leader" || r === "team leader" || r === "teamleader")
+      return "team-leader-work-orders.html";
+    return "dispatcher-work-orders.html";
+  }
+
+  async function login(){
+    clearMsgs();
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!email || !password)
+      return showErr("Please enter email and password.");
+
+    const res = await apiFetch("/auth/login", {
+      method:"POST",
+      body: JSON.stringify({ email, password })
+    });
+
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("LOGIN ERROR:", res.status, t);
+      return showErr("Login failed. Check your credentials.");
+    }
+
+    showOk("Logged in.");
+
+    const me = await apiFetch("/auth/me");
+    if (me.ok){
+      const data = await me.json();
+      window.location.href = routeByRole(data?.user?.role);
+      return;
+    }
+
+    window.location.href = "dispatcher-work-orders.html";
+  }
+
+  // password show / hide toggle
+  document.getElementById("togglePwdBtn").addEventListener("click", () => {
+    const pwd = document.getElementById("password");
+    const btn = document.getElementById("togglePwdBtn");
+
+    const isHidden = pwd.type === "password";
+    pwd.type = isHidden ? "text" : "password";
+    btn.textContent = isHidden ? "🙈" : "👁";
+    btn.setAttribute(
+      "aria-label",
+      isHidden ? "Hide password" : "Show password"
+      );
+  });
+
+
+  document.getElementById("loginBtn").addEventListener("click", login);
+  document.addEventListener("keydown", (e)=>{
+    if (e.key === "Enter") login();
+  });
+</script>
+</body>
+</html>

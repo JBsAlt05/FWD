@@ -1,0 +1,207 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>FWD - Team Leader Work Orders</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 16px; }
+    header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    input, select, button { padding:8px; }
+    table { width:100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border:1px solid #ddd; padding:8px; vertical-align: top; }
+    th { background:#f5f5f5; }
+    .muted { color:#666; font-size: 12px; }
+    .pill { display:inline-block; padding:2px 8px; border-radius: 12px; background:#eee; font-size: 12px; }
+    .card { border:1px solid #ddd; padding:12px; border-radius:10px; margin-top:12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h2 style="margin:0">Team Leader — Work Orders</h2>
+      <div class="muted" id="meLine"></div>
+    </div>
+    <div class="row">
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <h3 style="margin:0">All Work Orders (Filters)</h3>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <select id="dispatcherFilter">
+        <option value="">All dispatchers</option>
+      </select>
+
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="created">created</option>
+        <option value="assigned">assigned</option>
+        <option value="in_progress">in_progress</option>
+        <option value="completed">completed</option>
+        <option value="sent_to_client">sent_to_client</option>
+      </select>
+
+      <input id="searchFilter" placeholder="Search (address/desc/client/store)" />
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Status</th>
+          <th>Dispatcher</th>
+          <th>Client / Store</th>
+          <th>Address</th>
+          <th>Description</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="woBody"></tbody>
+    </table>
+  </div>
+
+<script>
+  const API = "http://localhost:3001";
+
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(API + path, {
+      ...opts,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(opts.headers || {})
+      }
+    });
+    return res;
+  }
+
+  async function requireRole(role) {
+    const res = await apiFetch("/auth/me");
+    if (!res.ok) { window.location.href = "login.html"; return null; }
+    const data = await res.json();
+    const user = data.user;
+    document.getElementById("meLine").textContent = `${user.full_name} (${user.role})`;
+    if (user.role !== role) { alert("Not authorized."); window.location.href="login.html"; return null; }
+    return user;
+  }
+
+  let ALL = [];
+
+  function rowHtml(wo) {
+    const addr = [wo.address_line, wo.city, wo.state, wo.zip_code].filter(Boolean).join(", ");
+    const dispatcher = wo.dispatcher_name ? wo.dispatcher_name : (wo.assigned_dispatcher ? ("ID " + wo.assigned_dispatcher) : "-");
+    const canSend = wo.current_status === "completed";
+
+    return `
+      <tr>
+        <td>${wo.work_order_id}</td>
+        <td><span class="pill">${wo.current_status}</span></td>
+        <td>${dispatcher}</td>
+        <td>${wo.client_name || ""}<br><span class="muted">${wo.store_name || ("store_id: "+wo.store_id)}</span></td>
+        <td>${addr || "-"}</td>
+        <td>${(wo.description || "-").replaceAll("<","&lt;")}</td>
+        <td>
+          ${canSend ? `<button onclick="sendToClient(${wo.work_order_id})">Send to Client</button>` : `<span class="muted">—</span>`}
+        </td>
+      </tr>
+    `;
+  }
+
+  function render() {
+    const dispatcherId = document.getElementById("dispatcherFilter").value;
+    const status = document.getElementById("statusFilter").value;
+    const q = document.getElementById("searchFilter").value.trim().toLowerCase();
+
+    const list = ALL.filter(w => {
+      if (dispatcherId && String(w.assigned_dispatcher || "") !== dispatcherId) return false;
+      if (status && w.current_status !== status) return false;
+      if (q) {
+        const blob = [
+          w.address_line, w.city, w.state, w.zip_code,
+          w.description, w.client_name, w.store_name,
+          w.dispatcher_name
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+
+    document.getElementById("woBody").innerHTML = list.map(rowHtml).join("");
+  }
+
+  async function loadDispatchers() {
+    const sel = document.getElementById("dispatcherFilter");
+    sel.innerHTML = `<option value="">All dispatchers</option>`;
+    const res = await apiFetch("/users/dispatchers");
+    if (!res.ok) return;
+    const list = await res.json();
+    for (const d of list) {
+      const opt = document.createElement("option");
+      opt.value = d.user_id;
+      opt.textContent = d.full_name;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function refresh() {
+    // Recommended endpoint (create later): GET /team-leader/work-orders
+    let res = await apiFetch("/team-leader/work-orders");
+    if (res.status === 404) {
+      // fallback to admin list
+      res = await apiFetch("/admin/work-orders");
+    }
+    if (!res.ok) { alert("Failed to load work orders."); return; }
+    ALL = await res.json();
+    render();
+  }
+
+  window.sendToClient = async function(id) {
+    // Recommended endpoint (create later): POST /work-orders/:id/send-to-client
+    let res = await apiFetch(`/work-orders/${id}/send-to-client`, { method: "POST" });
+
+    if (res.status === 404) {
+      // fallback: update status via admin PUT
+      const wo = ALL.find(x => x.work_order_id === id);
+      if (!wo) return;
+      const payload = {
+        current_status: "sent_to_client",
+        description: wo.description || null,
+        address_line: wo.address_line,
+        city: wo.city || null,
+        state: wo.state || null,
+        zip_code: wo.zip_code || null,
+        store_id: wo.store_id,
+        assigned_dispatcher: wo.assigned_dispatcher
+      };
+      res = await apiFetch(`/admin/work-orders/${id}`, { method:"PUT", body: JSON.stringify(payload) });
+    }
+
+    if (!res.ok) { alert("Failed to send to client."); return; }
+    await refresh();
+  };
+
+  async function logout() {
+    await apiFetch("/auth/logout", { method: "POST" });
+    window.location.href = "login.html";
+  }
+
+  (async function init() {
+    await requireRole("team_leader");
+    await loadDispatchers();
+    await refresh();
+
+    document.getElementById("refreshBtn").onclick = refresh;
+    document.getElementById("dispatcherFilter").onchange = render;
+    document.getElementById("statusFilter").onchange = render;
+    document.getElementById("searchFilter").oninput = render;
+    document.getElementById("logoutBtn").onclick = logout;
+  })();
+</script>
+</body>
+</html>

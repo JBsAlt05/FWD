@@ -1,0 +1,508 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dispatcher — Technicians</title>
+
+  <style>
+    :root{
+      --bg:#0f1115;
+      --panel:#151a22;
+      --panel2:#12161c;
+      --text:#e7eef7;
+      --muted:#9aa7b6;
+      --line:rgba(255,255,255,.08);
+      --chip:rgba(255,255,255,.08);
+      --accent:#28c7b7;
+      --shadow: 0 16px 40px rgba(0,0,0,.35);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(900px 420px at 20% 0%, rgba(40,199,183,.08), transparent 55%),
+                  radial-gradient(900px 420px at 80% 0%, rgba(122,162,255,.08), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      min-height:100vh;
+    }
+
+    header{
+      position:sticky; top:0; z-index:20;
+      background: rgba(15,17,21,.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 18px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .leftHead{display:flex; flex-direction:column; gap:2px;}
+    .leftHead h1{margin:0; font-size:16px; letter-spacing:.2px}
+    .leftHead .sub{font-size:12px; color:var(--muted)}
+    .actions{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+
+    .btn{
+      padding:10px 14px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:800;
+      transition:.12s;
+    }
+    .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.14);}
+    .btn.primary{border-color: rgba(40,199,183,.35); background: rgba(40,199,183,.14);}
+    .btn.primary:hover{background: rgba(40,199,183,.18);}
+    .btn.ghost{background: transparent;}
+    .btn.danger{border-color: rgba(255,107,107,.35); background: rgba(255,107,107,.10);}
+
+    .wrap{padding: 16px 18px 22px;}
+    .card{
+      background: linear-gradient(180deg, rgba(21,26,34,.9), rgba(18,22,28,.9));
+      border:1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+
+    .toolbar{
+      padding: 14px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .search{
+      flex:1;
+      min-width: 280px;
+      display:flex; align-items:center; gap:10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.04);
+    }
+    .search svg{width:18px; height:18px; opacity:.75}
+    .search input{
+      width:100%;
+      border:none; outline:none;
+      background:transparent;
+      color: var(--text);
+      font-size:14px;
+    }
+    .meta{font-size:12px; color:var(--muted)}
+
+    .err{
+      display:none;
+      padding:12px 14px;
+      margin:14px;
+      border-radius:14px;
+      border:1px solid rgba(255,107,107,.35);
+      background: rgba(255,107,107,.12);
+      color:#ffd6d6;
+      font-weight:900;
+      font-size:13px;
+    }
+    .ok{
+      display:none;
+      padding:12px 14px;
+      margin:14px;
+      border-radius:14px;
+      border:1px solid rgba(56,211,159,.35);
+      background: rgba(56,211,159,.12);
+      color:#d6fff3;
+      font-weight:900;
+      font-size:13px;
+    }
+
+    .tableWrap{overflow:auto}
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      font-size:13px;
+    }
+    thead th{
+      position:sticky; top:0;
+      background: rgba(18,22,28,.95);
+      border-bottom:1px solid var(--line);
+      padding:12px 12px;
+      text-align:left;
+      color: rgba(231,238,247,.92);
+      font-weight:900;
+      white-space:nowrap;
+      z-index:1;
+    }
+    tbody td{
+      border-bottom:1px solid var(--line);
+      padding:12px 12px;
+      vertical-align:top;
+      color: rgba(231,238,247,.92);
+    }
+    tbody tr:hover{background: rgba(255,255,255,.03)}
+
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background: var(--chip);
+      font-weight:900;
+      font-size:12px;
+      white-space:nowrap;
+      color: var(--text);
+    }
+
+    /* Modal */
+    .overlay{
+      position:fixed;
+      inset:0;
+      background: rgba(0,0,0,.55);
+      display:none;
+      z-index:1000;
+    }
+    .modal{
+      position:fixed;
+      top:50%; left:50%;
+      transform: translate(-50%,-50%);
+      width: min(560px, calc(100vw - 24px));
+      background: rgba(18,22,28,.98);
+      border:1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.6);
+      display:none;
+      z-index:1001;
+      overflow:hidden;
+    }
+    .modalHead{
+      padding:14px 14px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      border-bottom:1px solid var(--line);
+    }
+    .modalHead .title{
+      font-weight:900;
+      font-size:14px;
+    }
+    .modalBody{padding:14px;}
+    .grid2{display:grid; grid-template-columns: 1fr 1fr; gap:10px;}
+    label{display:block; font-size:12px; color:var(--muted); margin:10px 0 6px; font-weight:900;}
+    input{
+      width:100%;
+      padding:10px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      outline:none;
+    }
+    .modalFoot{
+      padding:14px;
+      border-top:1px solid var(--line);
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+    .xbtn{
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:900;
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="leftHead">
+    <h1>Technicians</h1>
+    <div class="sub" id="meLine">Loading…</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn ghost" id="backBtn">Back</button>
+    <button class="btn primary" id="addBtn">Add Technician</button>
+    <button class="btn" id="refreshBtn">Refresh</button>
+    <button class="btn danger" id="logoutBtn">Logout</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="toolbar">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M10 2a8 8 0 105.293 14.293l4.707 4.707 1.414-1.414-4.707-4.707A8 8 0 0010 2zm0 2a6 6 0 110 12 6 6 0 010-12z"/>
+        </svg>
+        <input id="searchInput" placeholder="Search name, trade, phone, city, state…" />
+      </div>
+      <div class="meta" id="metaLine">0 technicians</div>
+    </div>
+
+    <div class="err" id="errBox"></div>
+    <div class="ok" id="okBox"></div>
+
+    <div class="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px">ID</th>
+            <th style="min-width:220px">Full Name</th>
+            <th style="min-width:140px">Trade</th>
+            <th style="min-width:140px">Phone</th>
+            <th style="min-width:140px">City</th>
+            <th style="min-width:120px">State</th>
+            <th style="width:130px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="modal">
+  <div class="modalHead">
+    <div class="title" id="modalTitle">Add Technician</div>
+    <button class="xbtn" id="closeBtn">✕</button>
+  </div>
+
+  <div class="modalBody">
+    <input type="hidden" id="tech_id"/>
+
+    <label>Full Name *</label>
+    <input id="full_name" placeholder="Required"/>
+
+    <div class="grid2">
+      <div>
+        <label>Trade</label>
+        <input id="trade" placeholder="HVAC / Plumbing / Electrical…"/>
+      </div>
+      <div>
+        <label>Phone</label>
+        <input id="phone" placeholder="Phone"/>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <label>City</label>
+        <input id="city" placeholder="City"/>
+      </div>
+      <div>
+        <label>State</label>
+        <input id="state" placeholder="State"/>
+      </div>
+    </div>
+
+    <label>Payment Info</label>
+    <input id="payment_info" placeholder="Optional"/>
+  </div>
+
+  <div class="modalFoot">
+    <button class="btn ghost" id="cancelBtn">Cancel</button>
+    <button class="btn primary" id="saveBtn">Save</button>
+  </div>
+</div>
+
+<script>
+  const API = "http://localhost:3001";
+  let ALL = [];
+
+  async function apiFetch(path, opts = {}) {
+    return fetch(API + path, {
+      ...opts,
+      credentials:"include",
+      headers:{ "Content-Type":"application/json", ...(opts.headers||{}) }
+    });
+  }
+
+  function showErr(msg){
+    const box = document.getElementById("errBox");
+    const ok = document.getElementById("okBox");
+    ok.style.display = "none";
+    box.style.display = "block";
+    box.textContent = msg;
+  }
+  function showOk(msg){
+    const ok = document.getElementById("okBox");
+    const box = document.getElementById("errBox");
+    box.style.display = "none";
+    ok.style.display = "block";
+    ok.textContent = msg;
+  }
+  function clearMsgs(){
+    document.getElementById("errBox").style.display = "none";
+    document.getElementById("okBox").style.display = "none";
+  }
+
+  async function requireDispatcher(){
+    const res = await apiFetch("/auth/me");
+    if (!res.ok) { window.location.href="login.html"; return null; }
+    const data = await res.json();
+    document.getElementById("meLine").textContent = `${data.user.full_name} (${data.user.role})`;
+    if (data.user.role !== "dispatcher") { window.location.href="login.html"; return null; }
+    return data.user;
+  }
+
+  function esc(s){ return String(s ?? "").replaceAll("<","&lt;"); }
+
+  function render(){
+    const q = document.getElementById("searchInput").value.trim().toLowerCase();
+    const rows = ALL.filter(t => {
+      if (!q) return true;
+      const blob = [t.technician_id, t.full_name, t.trade, t.phone, t.city, t.state].filter(Boolean).join(" ").toLowerCase();
+      return blob.includes(q);
+    });
+
+    document.getElementById("metaLine").textContent = `${rows.length} shown / ${ALL.length} total`;
+
+    document.getElementById("tbody").innerHTML = rows.map(t => `
+      <tr>
+        <td>${t.technician_id}</td>
+        <td>${esc(t.full_name || "-")}</td>
+        <td>${t.trade ? `<span class="chip">${esc(t.trade)}</span>` : "-"}</td>
+        <td>${esc(t.phone || "-")}</td>
+        <td>${esc(t.city || "-")}</td>
+        <td>${esc(t.state || "-")}</td>
+        <td>
+          <button class="btn" onclick="openEdit(${t.technician_id})">Edit</button>
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  async function refresh(){
+    clearMsgs();
+    const res = await apiFetch("/technicians");
+    if (!res.ok){
+      showErr("Technicians list failed to load. (Backend endpoint GET /technicians is missing or not working.)");
+      ALL = [];
+      render();
+      return;
+    }
+    ALL = await res.json();
+    render();
+  }
+
+  async function logout(){
+    await apiFetch("/auth/logout", { method:"POST" });
+    window.location.href="login.html";
+  }
+
+  // ----- Modal logic -----
+  const overlay = document.getElementById("overlay");
+  const modal = document.getElementById("modal");
+
+  function openModal(){
+    overlay.style.display = "block";
+    modal.style.display = "block";
+  }
+  function closeModal(){
+    overlay.style.display = "none";
+    modal.style.display = "none";
+  }
+  function clearForm(){
+    document.getElementById("tech_id").value = "";
+    document.getElementById("full_name").value = "";
+    document.getElementById("trade").value = "";
+    document.getElementById("phone").value = "";
+    document.getElementById("city").value = "";
+    document.getElementById("state").value = "";
+    document.getElementById("payment_info").value = "";
+  }
+
+  function openAdd(){
+    clearMsgs();
+    clearForm();
+    document.getElementById("modalTitle").textContent = "Add Technician";
+    openModal();
+  }
+
+  window.openEdit = function(id){
+    clearMsgs();
+    const t = ALL.find(x => x.technician_id === id);
+    if (!t) return;
+
+    document.getElementById("modalTitle").textContent = `Edit Technician #${id}`;
+    document.getElementById("tech_id").value = t.technician_id;
+    document.getElementById("full_name").value = t.full_name || "";
+    document.getElementById("trade").value = t.trade || "";
+    document.getElementById("phone").value = t.phone || "";
+    document.getElementById("city").value = t.city || "";
+    document.getElementById("state").value = t.state || "";
+    document.getElementById("payment_info").value = t.payment_info || "";
+
+    openModal();
+  };
+
+  async function save(){
+    clearMsgs();
+
+    const id = document.getElementById("tech_id").value;
+    const payload = {
+      full_name: document.getElementById("full_name").value.trim(),
+      trade: document.getElementById("trade").value.trim() || null,
+      phone: document.getElementById("phone").value.trim() || null,
+      city: document.getElementById("city").value.trim() || null,
+      state: document.getElementById("state").value.trim() || null,
+      payment_info: document.getElementById("payment_info").value.trim() || null
+    };
+
+    if (!payload.full_name){
+      showErr("Full Name is required.");
+      return;
+    }
+
+    let res;
+    if (id){
+      res = await apiFetch(`/technicians/${id}`, { method:"PUT", body: JSON.stringify(payload) });
+    } else {
+      res = await apiFetch(`/technicians`, { method:"POST", body: JSON.stringify(payload) });
+    }
+
+    if (!res.ok){
+      // keep it simple and clean
+      showErr("Save failed. (Make sure backend endpoints exist: POST /technicians and PUT /technicians/:id)");
+      return;
+    }
+
+    closeModal();
+    showOk("Saved.");
+    await refresh();
+  }
+
+  // events
+  document.getElementById("searchInput").addEventListener("input", render);
+  document.getElementById("refreshBtn").addEventListener("click", refresh);
+  document.getElementById("logoutBtn").addEventListener("click", logout);
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    window.location.href = "dispatcher-work-orders.html";
+  });
+
+  document.getElementById("addBtn").addEventListener("click", openAdd);
+  document.getElementById("closeBtn").addEventListener("click", closeModal);
+  document.getElementById("cancelBtn").addEventListener("click", closeModal);
+  overlay.addEventListener("click", closeModal);
+  document.getElementById("saveBtn").addEventListener("click", save);
+
+  (async function init(){
+    await requireDispatcher();
+    await refresh();
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dispatcher — Work Orders</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+<header class="appHeader">
+  <div class="leftHead">
+    <h1>Dispatcher — Work Orders</h1>
+    <div class="sub" id="meLine">Loading…</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="techBtn">Technicians</button>
+    <button class="btn" id="refreshBtn">Refresh</button>
+    <button class="btn danger" id="logoutBtn">Logout</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="cardHead">My Assigned Work Orders</div>
+
+    <div class="toolbar">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M10 2a8 8 0 105.293 14.293l4.707 4.707 1.414-1.414-4.707-4.707A8 8 0 0010 2zm0 2a6 6 0 110 12 6 6 0 010-12z"/>
+        </svg>
+        <input id="searchFilter" placeholder="Search WO #, client, store, address, status…" />
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+        <select class="input" id="statusFilter" style="min-width:220px">
+          <option value="">All statuses</option>
+          <option>Assigned</option>
+          <option>Secured</option>
+          <option>Awaiting Approval</option>
+          <option>Awaiting Advice</option>
+          <option>Onsite</option>
+          <option>Job Done</option>
+          <option>Needs Proposal</option>
+          <option>Approved Scheduled</option>
+          <option>Approved Pending</option>
+          <option>Return Trip Needed</option>
+          <option>Parts Needed</option>
+          <option>Parts Ordered</option>
+          <option>Billed For Incurred</option>
+          <option>Ready To Invoice</option>
+          <option>Invoiced</option>
+          <option>Recall</option>
+          <option>Paid</option>
+          <option>Canceled</option>
+        </select>
+
+        <div class="meta" id="metaLine">0 work orders</div>
+      </div>
+    </div>
+
+    <div class="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-wo">WO #</th>
+            <th class="col-client">Client</th>
+            <th class="col-store">Store</th>
+            <th class="col-address">Address</th>
+            <th class="col-nte">NTE</th>
+            <th class="col-eta">ETA</th>
+            <th class="col-status">Status</th>
+          </tr>
+        </thead>
+        <tbody id="woBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = "http://localhost:3001";
+
+  async function apiFetch(path, opts = {}) {
+    return fetch(API + path, {
+      ...opts,
+      credentials: "include",
+      headers: { "Content-Type":"application/json", ...(opts.headers||{}) }
+    });
+  }
+
+  function esc(s){ return String(s ?? "").replaceAll("<","&lt;"); }
+  function fmtAddress(w){
+    return [w.address_line, w.city, w.state, w.zip_code].filter(Boolean).join(", ");
+  }
+  function toYMD(v){
+    if (!v) return "";
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return v.trim();
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  async function requireDispatcher(){
+    const res = await apiFetch("/auth/me");
+    if (!res.ok) { window.location.href="login.html"; return null; }
+    const data = await res.json();
+    const u = data.user || {};
+    const role = String(u.role || u.role_name || "").toLowerCase();
+
+    document.getElementById("meLine").textContent =
+      `${u.full_name || u.email || "User"} (${u.role || u.role_name || "dispatcher"})`;
+
+    if (role !== "dispatcher"){ window.location.href="login.html"; return null; }
+    return u;
+  }
+
+  let ALL = [];
+
+  function rowHtml(w){
+    const woNo = w.work_order_number || "-";
+    const addr = fmtAddress(w) || "-";
+    const eta = toYMD(w.eta_date || w.eta || null);
+    const nte = (w.nte_amount ?? w.nte ?? null);
+    const status = (w.current_status && String(w.current_status).trim()) ? w.current_status : "Assigned";
+
+    return `
+      <tr>
+        <td class="col-wo">
+          <a class="woLink" href="dispatcher-work-order.html?wo=${encodeURIComponent(woNo)}">${esc(woNo)}</a>
+        </td>
+        <td class="col-client">${esc(w.client_name || "-")}</td>
+        <td class="col-store">${esc(w.store_name || "-")}</td>
+        <td class="col-address">${esc(addr)}</td>
+        <td class="col-nte">${nte !== null && nte !== "" ? esc(nte) : "-"}</td>
+        <td class="col-eta">${eta ? esc(eta) : "-"}</td>
+        <td class="col-status"><span class="chip">${esc(status)}</span></td>
+      </tr>
+    `;
+  }
+
+  function render(){
+    const q = document.getElementById("searchFilter").value.trim().toLowerCase();
+    const st = document.getElementById("statusFilter").value;
+
+    const rows = ALL.filter(w => {
+      const status = (w.current_status && String(w.current_status).trim()) ? w.current_status : "Assigned";
+      if (st && status !== st) return false;
+
+      if (q){
+        const blob = [
+          w.work_order_number,
+          w.client_name,
+          w.store_name,
+          w.address_line, w.city, w.state, w.zip_code,
+          w.description,
+          status,
+          w.nte_amount,
+          w.eta_date
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+
+    document.getElementById("metaLine").textContent = `${rows.length} shown / ${ALL.length} total`;
+    document.getElementById("woBody").innerHTML = rows.map(rowHtml).join("");
+  }
+
+  async function refresh(){
+    const res = await apiFetch("/dispatcher/work-orders");
+    if (!res.ok){
+      console.log("DISPATCHER LIST ERROR:", res.status, await res.text().catch(()=> ""));
+      return;
+    }
+    ALL = await res.json();
+    render();
+  }
+
+  async function logout(){
+    await apiFetch("/auth/logout", { method:"POST" });
+    window.location.href="login.html";
+  }
+
+  (async function init(){
+    await requireDispatcher();
+    await refresh();
+
+    document.getElementById("techBtn").addEventListener("click", () => {window.location.href = "technicians.html";});
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("searchFilter").addEventListener("input", render);
+    document.getElementById("statusFilter").addEventListener("change", render);
+  })();
+</script>
+</body>
+</html>

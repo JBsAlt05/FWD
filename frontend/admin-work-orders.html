@@ -1,0 +1,469 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin — Work Orders</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .formGrid{
+      display:grid;
+      grid-template-columns: 200px 1.1fr 1.1fr 1fr 1fr 1fr;
+      gap:10px;
+      align-items:end;
+    }
+    .input{
+      width:100%;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      outline:none;
+      font-weight:800;
+    }
+    .input:focus{
+      border-color: rgba(40,199,183,.45);
+      box-shadow: 0 0 0 3px rgba(40,199,183,.12);
+    }
+    select.input{ cursor:pointer; }
+    .full{ grid-column: 1 / -1; }
+    .twoBtn{ display:flex; gap:10px; flex-wrap:wrap; }
+    .twoBtn .btn{ min-width:160px; }
+
+    @media (max-width: 1100px){
+      .formGrid{ grid-template-columns: 1fr 1fr; }
+      .twoBtn .btn{ width:100%; }
+    }
+  </style>
+</head>
+
+<body>
+<header class="appHeader">
+  <div class="leftHead">
+    <h1>Admin — Work Orders</h1>
+    <div class="sub" id="meLine">Loading…</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="refreshBtn">Refresh</button>
+    <button class="btn danger" id="logoutBtn">Logout</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- CREATE -->
+  <div class="card">
+    <div class="cardHead">Create Work Order</div>
+
+    <div class="err" id="errBox"></div>
+    <div class="ok" id="okBox"></div>
+
+    <div class="cardBody">
+      <div class="formGrid">
+
+        <div>
+          <div class="label">Work Order # *</div>
+          <input class="input" id="work_order_number" placeholder="e.g. 240123-001">
+        </div>
+
+        <div>
+          <div class="label">Client *</div>
+          <select class="input" id="clientSel"></select>
+        </div>
+
+        <div>
+          <div class="label">Store *</div>
+          <select class="input" id="storeSel"></select>
+        </div>
+
+        <div>
+          <div class="label">Dispatcher *</div>
+          <select class="input" id="assigned_dispatcher"></select>
+        </div>
+
+        <div>
+          <div class="label">NTE</div>
+          <input class="input" id="nte" type="number" step="1" placeholder="e.g. 500">
+        </div>
+
+        <div>
+          <div class="label">ETA (date only)</div>
+          <input class="input" id="eta_date" type="date">
+        </div>
+
+        <div class="full">
+          <div class="label">Address Line *</div>
+          <input class="input" id="address_line" placeholder="Street, suite, etc">
+        </div>
+
+        <div>
+          <div class="label">City</div>
+          <input class="input" id="city" placeholder="City">
+        </div>
+
+        <div>
+          <div class="label">State</div>
+          <input class="input" id="state" placeholder="State">
+        </div>
+
+        <div>
+          <div class="label">Zip</div>
+          <input class="input" id="zip_code" placeholder="Zip">
+        </div>
+
+        <div class="full">
+          <div class="label">Description</div>
+          <textarea id="description" placeholder="Description…" style="min-height:90px"></textarea>
+        </div>
+
+        <div class="twoBtn full">
+          <button class="btn primary" id="createBtn">Create Work Order</button>
+          <div class="muted" id="createMsg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:14px"></div>
+
+  <!-- LIST -->
+  <div class="card">
+    <div class="cardHead">All Work Orders</div>
+
+    <div class="toolbar">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M10 2a8 8 0 105.293 14.293l4.707 4.707 1.414-1.414-4.707-4.707A8 8 0 0010 2zm0 2a6 6 0 110 12 6 6 0 010-12z"/>
+        </svg>
+        <input id="searchFilter" placeholder="Search WO #, client, store, address, status…" />
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+        <select class="input" id="statusFilter" style="min-width:220px">
+          <option value="">All statuses</option>
+          <option>Assigned</option>
+          <option>Secured</option>
+          <option>Awaiting Approval</option>
+          <option>Awaiting Advice</option>
+          <option>Onsite</option>
+          <option>Job Done</option>
+          <option>Needs Proposal</option>
+          <option>Approved Scheduled</option>
+          <option>Approved Pending</option>
+          <option>Return Trip Needed</option>
+          <option>Parts Needed</option>
+          <option>Parts Ordered</option>
+          <option>Billed For Incurred</option>
+          <option>Ready To Invoice</option>
+          <option>Invoiced</option>
+          <option>Recall</option>
+          <option>Paid</option>
+          <option>Canceled</option>
+        </select>
+
+        <div class="meta" id="metaLine">0 work orders</div>
+      </div>
+    </div>
+
+    <div class="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-wo">WO #</th>
+            <th class="col-client">Client</th>
+            <th class="col-store">Store</th>
+            <th class="col-address">Address</th>
+            <th class="col-nte">NTE</th>
+            <th class="col-eta">ETA</th>
+            <th class="col-status">Status</th>
+            <th style="width:120px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="woBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = "http://localhost:3001";
+
+  async function apiFetch(path, opts = {}) {
+    return fetch(API + path, {
+      ...opts,
+      credentials: "include",
+      headers: { "Content-Type":"application/json", ...(opts.headers||{}) }
+    });
+  }
+
+  function showErr(msg){
+    const e = document.getElementById("errBox");
+    const ok = document.getElementById("okBox");
+    ok.style.display="none";
+    e.style.display="block";
+    e.textContent = msg;
+  }
+  function showOk(msg){
+    const ok = document.getElementById("okBox");
+    const e = document.getElementById("errBox");
+    e.style.display="none";
+    ok.style.display="block";
+    ok.textContent = msg;
+  }
+  function clearMsgs(){
+    document.getElementById("errBox").style.display="none";
+    document.getElementById("okBox").style.display="none";
+    document.getElementById("createMsg").textContent = "";
+  }
+
+  function esc(s){ return String(s ?? "").replaceAll("<","&lt;"); }
+  function fmtAddress(w){
+    return [w.address_line, w.city, w.state, w.zip_code].filter(Boolean).join(", ");
+  }
+
+  function toYMD(v){
+    if (!v) return "";
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return v.trim();
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  async function requireAdmin(){
+    const res = await apiFetch("/auth/me");
+    if (!res.ok) { window.location.href = "login.html"; return null; }
+    const data = await res.json();
+    const u = data.user || {};
+    const role = String(u.role || u.role_name || "").toLowerCase();
+
+    document.getElementById("meLine").textContent =
+      `${u.full_name || u.email || "User"} (${u.role || u.role_name || "admin"})`;
+
+    if (role !== "admin"){ window.location.href="login.html"; return null; }
+    return u;
+  }
+
+  async function loadDispatchers(){
+    const sel = document.getElementById("assigned_dispatcher");
+    sel.innerHTML = `<option value="">Select dispatcher *</option>`;
+
+    const res = await apiFetch("/users/dispatchers");
+    if (!res.ok) return;
+
+    const list = await res.json();
+    for (const d of list){
+      const opt = document.createElement("option");
+      opt.value = d.user_id;
+      opt.textContent = `${d.full_name} (${d.email})`;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function loadClients(){
+    const sel = document.getElementById("clientSel");
+    sel.innerHTML = `<option value="">Select client *</option>`;
+
+    const res = await apiFetch("/clients");
+    if (!res.ok){
+      console.log("CLIENTS ERROR:", res.status, await res.text().catch(()=> ""));
+      return;
+    }
+
+    const list = await res.json();
+    for (const c of list){
+      const opt = document.createElement("option");
+      opt.value = c.client_id;
+      opt.textContent = c.client_name;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function loadStoresForClient(clientId){
+    const sel = document.getElementById("storeSel");
+    sel.innerHTML = `<option value="">Select store *</option>`;
+    if (!clientId) return;
+
+    const res = await apiFetch(`/stores?client_id=${encodeURIComponent(clientId)}`);
+    if (!res.ok){
+      console.log("STORES ERROR:", res.status, await res.text().catch(()=> ""));
+      return;
+    }
+
+    const list = await res.json();
+    for (const s of list){
+      const opt = document.createElement("option");
+      opt.value = s.store_id;
+      opt.textContent = s.store_name;
+      sel.appendChild(opt);
+    }
+  }
+
+  let ALL = [];
+
+  function rowHtml(w){
+    const addr = fmtAddress(w) || "-";
+    const nte = (w.nte ?? null);
+    const eta = toYMD(w.eta_date ?? null);
+    const status = (w.current_status && String(w.current_status).trim()) ? w.current_status : "Assigned";
+    const woNo = w.work_order_number || w.work_order_id; // fallback
+
+    return `
+      <tr>
+        <td class="col-wo">
+          <a class="woLink" href="admin-work-order.html?wo=${encodeURIComponent(woNo)}">${esc(woNo)}</a>
+        </td>
+        <td class="col-client">${esc(w.client_name || "-")}</td>
+        <td class="col-store">${esc(w.store_name || ("Store #" + w.store_id))}</td>
+        <td class="col-address">${esc(addr)}</td>
+        <td class="col-nte">${nte !== null && nte !== "" ? esc(nte) : "-"}</td>
+        <td class="col-eta">${eta ? esc(eta) : "-"}</td>
+        <td class="col-status"><span class="chip">${esc(status)}</span></td>
+        <td>
+          <button class="btn" onclick="window.location.href='admin-work-order.html?wo=${encodeURIComponent(woNo)}'">Edit</button>
+        </td>
+      </tr>
+    `;
+  }
+
+  function render(){
+    const q = document.getElementById("searchFilter").value.trim().toLowerCase();
+    const st = document.getElementById("statusFilter").value;
+
+    const rows = ALL.filter(w => {
+      const status = (w.current_status && String(w.current_status).trim()) ? w.current_status : "Assigned";
+      if (st && status !== st) return false;
+
+      if (q){
+        const blob = [
+          w.work_order_number,
+          w.work_order_id,
+          w.client_name,
+          w.store_name,
+          w.address_line, w.city, w.state, w.zip_code,
+          w.description,
+          status,
+          w.nte,
+          w.eta_date
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+
+    document.getElementById("metaLine").textContent = `${rows.length} shown / ${ALL.length} total`;
+    document.getElementById("woBody").innerHTML = rows.map(rowHtml).join("");
+  }
+
+  async function refresh(){
+    clearMsgs();
+    const res = await apiFetch("/admin/work-orders");
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("ADMIN LIST ERROR:", res.status, t);
+      showErr("Failed to load admin work orders.");
+      return;
+    }
+    ALL = await res.json();
+    render();
+  }
+
+  async function createWO(){
+    clearMsgs();
+
+    const work_order_number = document.getElementById("work_order_number").value.trim();
+    const client_id = document.getElementById("clientSel").value;
+    const store_id = document.getElementById("storeSel").value;
+
+    const address_line = document.getElementById("address_line").value.trim();
+    const city = document.getElementById("city").value.trim();
+    const state = document.getElementById("state").value.trim();
+    const zip_code = document.getElementById("zip_code").value.trim();
+    const description = document.getElementById("description").value.trim();
+
+    const assigned_dispatcher = document.getElementById("assigned_dispatcher").value;
+    const nte = document.getElementById("nte").value;
+    const eta_date = document.getElementById("eta_date").value;
+
+    if (!work_order_number) return showErr("Work order number is required.");
+    if (!client_id) return showErr("Client is required.");
+    if (!store_id) return showErr("Store is required.");
+    if (!address_line) return showErr("Address line is required.");
+    if (!assigned_dispatcher) return showErr("Dispatcher is required.");
+
+    const payload = {
+      work_order_number,
+      store_id: Number(store_id),
+      address_line,
+      city: city || null,
+      state: state || null,
+      zip_code: zip_code || null,
+      description: description || null,
+      assigned_dispatcher: Number(assigned_dispatcher),
+      nte: nte === "" ? null : Number(nte),
+      eta_date: eta_date || null,
+      current_status: "Assigned"
+    };
+
+    const res = await apiFetch("/admin/work-orders", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("ADMIN CREATE ERROR:", res.status, t);
+      try {
+        const j = JSON.parse(t);
+        return showErr(j.message || "Create failed.");
+      } catch {
+        return showErr(t || "Create failed.");
+      }
+    }
+
+    showOk("Created.");
+
+    document.getElementById("work_order_number").value = "";
+    document.getElementById("clientSel").value = "";
+    document.getElementById("storeSel").innerHTML = `<option value="">Select store *</option>`;
+    document.getElementById("address_line").value = "";
+    document.getElementById("city").value = "";
+    document.getElementById("state").value = "";
+    document.getElementById("zip_code").value = "";
+    document.getElementById("description").value = "";
+    document.getElementById("assigned_dispatcher").value = "";
+    document.getElementById("nte").value = "";
+    document.getElementById("eta_date").value = "";
+
+    await refresh();
+  }
+
+  async function logout(){
+    await apiFetch("/auth/logout", { method:"POST" });
+    window.location.href = "login.html";
+  }
+
+  (async function init(){
+    await requireAdmin();
+    await loadDispatchers();
+    await loadClients();
+    await refresh();
+
+    document.getElementById("clientSel").addEventListener("change", async (e) => {
+      await loadStoresForClient(e.target.value);
+    });
+
+    document.getElementById("createBtn").addEventListener("click", createWO);
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+
+    document.getElementById("searchFilter").addEventListener("input", render);
+    document.getElementById("statusFilter").addEventListener("change", render);
+  })();
+</script>
+</body>
+</html>

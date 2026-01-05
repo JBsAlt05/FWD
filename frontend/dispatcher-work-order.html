@@ -1,0 +1,355 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dispatcher — Work Order</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+<header class="appHeader">
+  <div class="leftHead">
+    <h1 id="title">Work Order</h1>
+    <div class="sub" id="meLine">Loading…</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="backBtn">Back</button>
+    <button class="btn danger" id="logoutBtn">Logout</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- LEFT -->
+    <div class="card">
+      <div class="cardHead">Work Order Details</div>
+
+      <div class="err" id="errBox"></div>
+      <div class="ok" id="okBox"></div>
+
+      <div class="cardBody">
+        <div class="row">
+          <div class="field">
+            <div class="label">Client</div>
+            <div class="value" id="client">—</div>
+          </div>
+          <div class="field">
+            <div class="label">Store</div>
+            <div class="value" id="storeName">—</div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div class="field">
+            <div class="label">Status</div>
+            <select class="statusSelect" id="statusSel"></select>
+          </div>
+          <div class="field">
+            <div class="label">NTE</div>
+            <div class="value" id="nte">—</div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div class="field">
+            <div class="label">ETA</div>
+            <div class="value" id="eta">—</div>
+          </div>
+          <div class="field">
+            <div class="label">Address</div>
+            <div class="value" id="addr">—</div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="field">
+          <div class="label">Description</div>
+          <div class="value" id="desc">—</div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="btnRow" style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn primary" id="saveStatusBtn">Save Status</button>
+          <button class="btn" id="reloadBtn">Reload</button>
+        </div>
+
+        <div style="height:14px"></div>
+
+        <div class="field">
+          <div class="label">Add Note</div>
+          <textarea id="noteText" placeholder="Write note…"></textarea>
+          <div style="height:10px"></div>
+          <button class="btn" id="addNoteBtn">Add Note</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <div class="card">
+        <div class="cardHead">Notes</div>
+        <div class="cardBody">
+          <div id="notesList" class="muted" style="line-height:1.5">—</div>
+        </div>
+      </div>
+
+      <div style="height:14px"></div>
+
+      <div class="card">
+        <div class="cardHead">Documents & Photos</div>
+        <div class="cardBody">
+
+          <div style="margin-bottom:16px">
+            <div class="sectionTitle">Before Pictures</div>
+            <div class="thumbGrid" id="beforeGrid"></div>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <div class="sectionTitle">After Pictures</div>
+            <div class="thumbGrid" id="afterGrid"></div>
+          </div>
+
+          <div>
+            <div class="sectionTitle">Sign-off Picture</div>
+            <div style="height:10px"></div>
+            <div class="thumbGrid" id="signoffGrid"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const API = "http://localhost:3001";
+  const params = new URLSearchParams(location.search);
+  const wo = params.get("wo");
+
+  const allowedStatuses = [
+    'Assigned','Secured','Awaiting Approval','Awaiting Advice','Onsite','Job Done',
+    'Needs Proposal','Approved Scheduled','Approved Pending','Return Trip Needed',
+    'Parts Needed','Parts Ordered','Billed For Incurred','Ready To Invoice',
+    'Invoiced','Recall','Paid','Canceled'
+  ];
+
+  async function apiFetch(path, opts = {}) {
+    return fetch(API + path, {
+      ...opts,
+      credentials: "include",
+      headers: { "Content-Type":"application/json", ...(opts.headers||{}) }
+    });
+  }
+
+  function showErr(msg){
+    const e = document.getElementById("errBox");
+    const ok = document.getElementById("okBox");
+    ok.style.display="none";
+    e.style.display="block";
+    e.textContent = msg;
+  }
+  function showOk(msg){
+    const ok = document.getElementById("okBox");
+    const e = document.getElementById("errBox");
+    e.style.display="none";
+    ok.style.display="block";
+    ok.textContent = msg;
+  }
+  function clearMsgs(){
+    document.getElementById("errBox").style.display="none";
+    document.getElementById("okBox").style.display="none";
+  }
+  function esc(s){ return String(s ?? "").replaceAll("<","&lt;"); }
+
+  async function requireDispatcher(){
+    const res = await apiFetch("/auth/me");
+    if (!res.ok) { window.location.href="login.html"; return null; }
+    const data = await res.json();
+    const u = data.user || {};
+    const role = String(u.role || u.role_name || "").toLowerCase();
+
+    document.getElementById("meLine").textContent =
+      `${u.full_name || u.email || "User"} (${u.role || u.role_name || "dispatcher"})`;
+
+    if (role !== "dispatcher"){ window.location.href="login.html"; return null; }
+    return u;
+  }
+
+  function fillStatusOptions(){
+    const sel = document.getElementById("statusSel");
+    sel.innerHTML = allowedStatuses.map(s => `<option value="${s}">${s}</option>`).join("");
+  }
+
+  function fmtAddress(w){
+    return [w.address_line, w.city, w.state, w.zip_code].filter(Boolean).join(", ");
+  }
+
+  function toYMD(v){
+    if (!v) return "";
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return v.trim();
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  async function loadDetails(){
+    clearMsgs();
+    const res = await apiFetch(`/work-orders/by-number/${encodeURIComponent(wo)}/details`);
+    if (!res.ok){
+      console.log("DISPATCHER DETAILS ERROR:", res.status, await res.text().catch(()=> ""));
+      showErr("Failed to load work order.");
+      return null;
+    }
+    return await res.json();
+  }
+
+  function renderWO(workOrder){
+    const woNo = workOrder.work_order_number || wo;
+    document.getElementById("title").textContent = `Dispatcher — Work Order #${woNo}`;
+    document.getElementById("client").textContent = workOrder.client_name || "—";
+    document.getElementById("storeName").textContent = workOrder.store_name || "—";
+
+    const status = (workOrder.current_status && String(workOrder.current_status).trim()) ? workOrder.current_status : "Assigned";
+    document.getElementById("statusSel").value = status;
+
+    document.getElementById("nte").textContent = (workOrder.nte_amount ?? workOrder.nte ?? "—");
+    document.getElementById("eta").textContent = toYMD(workOrder.eta_date) || "—";
+    document.getElementById("addr").textContent = fmtAddress(workOrder) || "—";
+    document.getElementById("desc").textContent = workOrder.description || "—";
+  }
+
+  function renderNotes(notes){
+    const el = document.getElementById("notesList");
+    if (!notes || !notes.length){
+      el.innerHTML = "<span class='muted'>No notes yet.</span>";
+      return;
+    }
+
+    el.innerHTML = notes.map(n => {
+      const by = n.full_name ? esc(n.full_name) : `User #${n.user_id}`;
+      return `<div style="margin-bottom:10px">
+        <div style="font-weight:900;color:rgba(231,238,247,.92)">${by}</div>
+        <div style="color:rgba(231,238,247,.88)">${esc(n.note_text)}</div>
+      </div>`;
+    }).join("");
+  }
+
+  function openImage(url){ window.open(API + url, "_blank"); }
+  window.__openImg = openImage;
+
+  function renderGrid(elId, items, singleLatest=false){
+    const el = document.getElementById(elId);
+    const list = (items || []);
+    const shown = singleLatest ? list.slice(0,1) : list;
+
+    el.innerHTML = shown.map(f => `
+      <div class="thumb" title="Click to open" onclick="window.__openImg('${f.url}')">
+        <img src="${API + f.url}" alt="">
+      </div>
+    `).join("");
+
+    if (!shown.length){
+      el.innerHTML = `<div class="muted">No files.</div>`;
+    }
+  }
+
+  async function loadFiles(){
+    const res = await apiFetch(`/work-orders/by-number/${encodeURIComponent(wo)}/files`);
+    if (!res.ok){
+      console.log("DISPATCHER FILES ERROR:", res.status, await res.text().catch(()=> ""));
+      renderGrid("beforeGrid", []);
+      renderGrid("afterGrid", []);
+      renderGrid("signoffGrid", [], true);
+      return;
+    }
+    const files = await res.json();
+    renderGrid("beforeGrid", files.before || []);
+    renderGrid("afterGrid", files.after || []);
+    renderGrid("signoffGrid", files.signoff || [], true);
+  }
+
+  async function saveStatus(){
+    clearMsgs();
+    const status = document.getElementById("statusSel").value;
+
+    const res = await apiFetch(`/work-orders/by-number/${encodeURIComponent(wo)}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status })
+    });
+
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("SAVE STATUS ERROR:", res.status, t);
+      try { showErr(JSON.parse(t).message || "Save status failed."); }
+      catch { showErr(t || "Save status failed."); }
+      return;
+    }
+
+    showOk("Status updated.");
+    await refreshAll();
+  }
+
+  async function addNote(){
+    clearMsgs();
+    const note = document.getElementById("noteText").value.trim();
+    if (!note) return showErr("Note is required.");
+
+    const res = await apiFetch(`/work-orders/by-number/${encodeURIComponent(wo)}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ note })
+    });
+
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("ADD NOTE ERROR:", res.status, t);
+      try { showErr(JSON.parse(t).message || "Add note failed."); }
+      catch { showErr(t || "Add note failed."); }
+      return;
+    }
+
+    document.getElementById("noteText").value = "";
+    showOk("Note added.");
+    await refreshAll();
+  }
+
+  async function refreshAll(){
+    const data = await loadDetails();
+    if (!data) return;
+    renderWO(data.workOrder);
+    renderNotes(data.notes || []);
+    await loadFiles();
+  }
+
+  async function logout(){
+    await apiFetch("/auth/logout", { method:"POST" });
+    window.location.href="login.html";
+  }
+
+  document.getElementById("backBtn").addEventListener("click", ()=> window.location.href="dispatcher-work-orders.html");
+  document.getElementById("logoutBtn").addEventListener("click", logout);
+  document.getElementById("saveStatusBtn").addEventListener("click", saveStatus);
+  document.getElementById("reloadBtn").addEventListener("click", refreshAll);
+  document.getElementById("addNoteBtn").addEventListener("click", addNote);
+
+  (async function init(){
+    if (!wo){ showErr("Missing work order number in URL. Use ?wo=WORK_ORDER_NUMBER"); return; }
+    await requireDispatcher();
+    fillStatusOptions();
+    await refreshAll();
+  })();
+</script>
+</body>
+</html>

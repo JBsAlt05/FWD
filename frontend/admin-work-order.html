@@ -1,0 +1,509 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin — Work Order</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .input{
+      width:100%;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      outline:none;
+      font-weight:800;
+    }
+    .input:focus{
+      border-color: rgba(40,199,183,.45);
+      box-shadow: 0 0 0 3px rgba(40,199,183,.12);
+    }
+    select.input{ cursor:pointer; }
+    .btnRow{ display:flex; gap:10px; flex-wrap:wrap; }
+    .btnRow .btn{ min-width:160px; }
+    @media (max-width:640px){
+      .btnRow .btn{ width:100%; }
+    }
+  </style>
+</head>
+
+<body>
+<header class="appHeader">
+  <div class="leftHead">
+    <h1 id="title">Work Order</h1>
+    <div class="sub" id="meLine">Loading…</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="backBtn">Back</button>
+    <button class="btn danger" id="logoutBtn">Logout</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- LEFT -->
+    <div class="card">
+      <div class="cardHead">Edit Details</div>
+
+      <div class="err" id="errBox"></div>
+      <div class="ok" id="okBox"></div>
+
+      <div class="cardBody">
+
+        <div class="row">
+          <div class="field">
+            <div class="label">Work Order # *</div>
+            <input class="input" id="work_order_number" />
+          </div>
+          <div class="field">
+            <div class="label">Status</div>
+            <select class="statusSelect" id="statusSel"></select>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div class="field">
+            <div class="label">Client *</div>
+            <select class="input" id="clientSel"></select>
+          </div>
+          <div class="field">
+            <div class="label">Store *</div>
+            <select class="input" id="storeSel"></select>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div class="field">
+            <div class="label">Dispatcher *</div>
+            <select class="input" id="dispatcherSel"></select>
+          </div>
+          <div class="field">
+            <div class="label">NTE</div>
+            <input class="input" id="nte" type="number" step="1" placeholder="e.g. 500">
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div class="field">
+            <div class="label">ETA (date only)</div>
+            <input class="input" id="eta_date" type="date">
+          </div>
+          <div class="field">
+            <div class="label">Zip</div>
+            <input class="input" id="zip_code" />
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div class="field">
+            <div class="label">City</div>
+            <input class="input" id="city" />
+          </div>
+          <div class="field">
+            <div class="label">State</div>
+            <input class="input" id="state" />
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="field">
+          <div class="label">Address Line *</div>
+          <input class="input" id="address_line" />
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="field">
+          <div class="label">Description</div>
+          <textarea id="description" placeholder="Description…"></textarea>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="btnRow">
+          <button class="btn primary" id="saveBtn">Save Changes</button>
+          <button class="btn" id="reloadBtn">Reload</button>
+        </div>
+
+        <div class="muted" style="margin-top:10px">
+          Notes + Files are read-only for admin on this page.
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <div class="card">
+        <div class="cardHead">Notes (Read-only)</div>
+        <div class="cardBody">
+          <div class="muted" style="margin-bottom:8px">Recent notes:</div>
+          <div id="notesList" class="muted" style="line-height:1.5">—</div>
+        </div>
+      </div>
+
+      <div style="height:14px"></div>
+
+      <div class="card">
+        <div class="cardHead">Documents & Photos (Read-only)</div>
+        <div class="cardBody">
+
+          <div style="margin-bottom:16px">
+            <div class="sectionTitle">Before Pictures</div>
+            <div class="thumbGrid" id="beforeGrid"></div>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <div class="sectionTitle">After Pictures</div>
+            <div class="thumbGrid" id="afterGrid"></div>
+          </div>
+
+          <div>
+            <div class="sectionTitle">Sign-off Picture</div>
+            <div class="muted" style="margin-top:6px">Latest sign-off shows here:</div>
+            <div style="height:10px"></div>
+            <div class="thumbGrid" id="signoffGrid"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const API = "http://localhost:3001";
+  const params = new URLSearchParams(location.search);
+  const wo = params.get("wo"); // ✅ by number now
+
+  let CURRENT_INTERNAL_ID = null;
+
+  const allowedStatuses = [
+    'Assigned','Secured','Awaiting Approval','Awaiting Advice','Onsite','Job Done',
+    'Needs Proposal','Approved Scheduled','Approved Pending','Return Trip Needed',
+    'Parts Needed','Parts Ordered','Billed For Incurred','Ready To Invoice',
+    'Invoiced','Recall','Paid','Canceled'
+  ];
+
+  async function apiFetch(path, opts = {}) {
+    return fetch(API + path, {
+      ...opts,
+      credentials: "include",
+      headers: { "Content-Type":"application/json", ...(opts.headers||{}) }
+    });
+  }
+
+  function showErr(msg){
+    const e = document.getElementById("errBox");
+    const ok = document.getElementById("okBox");
+    ok.style.display="none";
+    e.style.display="block";
+    e.textContent = msg;
+  }
+  function showOk(msg){
+    const ok = document.getElementById("okBox");
+    const e = document.getElementById("errBox");
+    e.style.display="none";
+    ok.style.display="block";
+    ok.textContent = msg;
+  }
+  function clearMsgs(){
+    document.getElementById("errBox").style.display="none";
+    document.getElementById("okBox").style.display="none";
+  }
+  function esc(s){ return String(s ?? "").replaceAll("<","&lt;"); }
+
+  async function requireAdmin(){
+    const res = await apiFetch("/auth/me");
+    if (!res.ok) { window.location.href="login.html"; return null; }
+    const data = await res.json();
+    const u = data.user || {};
+    const role = String(u.role || u.role_name || "").toLowerCase();
+    document.getElementById("meLine").textContent =
+      `${u.full_name || u.email || "User"} (${u.role || u.role_name || "admin"})`;
+    if (role !== "admin"){ window.location.href="login.html"; return null; }
+    return u;
+  }
+
+  function fillStatusOptions(){
+    const sel = document.getElementById("statusSel");
+    sel.innerHTML = allowedStatuses.map(s => `<option value="${s}">${s}</option>`).join("");
+  }
+
+  async function loadDispatchers(){
+    const sel = document.getElementById("dispatcherSel");
+    sel.innerHTML = `<option value="">Select dispatcher *</option>`;
+    const res = await apiFetch("/users/dispatchers");
+    if (!res.ok) return;
+    const list = await res.json();
+    for (const d of list){
+      const opt = document.createElement("option");
+      opt.value = d.user_id;
+      opt.textContent = `${d.full_name} (${d.email})`;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function loadClients(){
+    const sel = document.getElementById("clientSel");
+    sel.innerHTML = `<option value="">Select client *</option>`;
+    const res = await apiFetch("/clients");
+    if (!res.ok) return;
+    const list = await res.json();
+    for (const c of list){
+      const opt = document.createElement("option");
+      opt.value = c.client_id;
+      opt.textContent = c.client_name;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function loadStoresForClient(clientId, selectedStoreId=null){
+    const sel = document.getElementById("storeSel");
+    sel.innerHTML = `<option value="">Select store *</option>`;
+    if (!clientId) return;
+
+    const res = await apiFetch(`/stores?client_id=${encodeURIComponent(clientId)}`);
+    if (!res.ok) return;
+
+    const list = await res.json();
+    for (const s of list){
+      const opt = document.createElement("option");
+      opt.value = s.store_id;
+      opt.textContent = s.store_name;
+      sel.appendChild(opt);
+    }
+    if (selectedStoreId) sel.value = String(selectedStoreId);
+  }
+
+  function toDateInputValue(v){
+    if (!v) return "";
+    const s = String(v).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  async function loadWOByNumber(){
+    clearMsgs();
+    const res = await apiFetch(`/admin/work-orders/by-number/${encodeURIComponent(wo)}`);
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("ADMIN WO GET BY NUMBER ERROR:", res.status, t);
+      showErr("Failed to load work order.");
+      return null;
+    }
+    return await res.json();
+  }
+
+  async function renderWO(w){
+    CURRENT_INTERNAL_ID = w.work_order_id;
+
+    const showNo = w.work_order_number || wo;
+    document.getElementById("title").textContent = `Admin — Work Order #${showNo}`;
+
+    document.getElementById("work_order_number").value = showNo;
+
+    const status = (w.current_status && String(w.current_status).trim()) ? w.current_status : "Assigned";
+    document.getElementById("statusSel").value = status;
+
+    document.getElementById("dispatcherSel").value = w.assigned_dispatcher || "";
+
+    document.getElementById("nte").value = (w.nte ?? "") === null ? "" : (w.nte ?? "");
+    document.getElementById("eta_date").value = toDateInputValue(w.eta_date);
+
+    document.getElementById("address_line").value = w.address_line ?? "";
+    document.getElementById("city").value = w.city ?? "";
+    document.getElementById("state").value = w.state ?? "";
+    document.getElementById("zip_code").value = w.zip_code ?? "";
+    document.getElementById("description").value = w.description ?? "";
+
+    // set client/store dropdowns
+    // we only have client_name here, but also store_id and store_name.
+    // We can fetch store to know client_id if needed. Easiest: call /stores/:id which returns client_id.
+    const storeRes = await apiFetch(`/stores/${w.store_id}`);
+    if (storeRes.ok){
+      const storeObj = await storeRes.json();
+      const clientId = storeObj.client_id;
+      document.getElementById("clientSel").value = String(clientId);
+      await loadStoresForClient(clientId, w.store_id);
+    }
+  }
+
+  async function saveWO(){
+    clearMsgs();
+
+    const assigned_dispatcher = document.getElementById("dispatcherSel").value;
+    if (!assigned_dispatcher) return showErr("Dispatcher is required.");
+
+    const store_id = document.getElementById("storeSel").value;
+    if (!store_id) return showErr("Store is required.");
+
+    const newWO = document.getElementById("work_order_number").value.trim();
+    if (!newWO) return showErr("Work order number is required.");
+
+    const payload = {
+      work_order_number: newWO,
+      store_id: Number(store_id),
+      address_line: document.getElementById("address_line").value.trim(),
+      city: document.getElementById("city").value.trim() || null,
+      state: document.getElementById("state").value.trim() || null,
+      zip_code: document.getElementById("zip_code").value.trim() || null,
+      description: document.getElementById("description").value.trim() || null,
+      assigned_dispatcher: Number(assigned_dispatcher),
+      nte: document.getElementById("nte").value === "" ? null : Number(document.getElementById("nte").value),
+      eta_date: document.getElementById("eta_date").value || null,
+      current_status: document.getElementById("statusSel").value
+    };
+
+    if (!payload.address_line) return showErr("Address line is required.");
+
+    const res = await apiFetch(`/admin/work-orders/by-number/${encodeURIComponent(wo)}`, {
+      method:"PUT",
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("ADMIN WO SAVE ERROR:", res.status, t);
+      try {
+        const j = JSON.parse(t);
+        return showErr(j.message || "Save failed.");
+      } catch {
+        return showErr(t || "Save failed.");
+      }
+    }
+
+    showOk("Saved.");
+
+    // if WO number changed, update URL so reload works
+    if (newWO !== wo){
+      const url = new URL(location.href);
+      url.searchParams.set("wo", newWO);
+      history.replaceState({}, "", url.toString());
+    }
+
+    await refreshAll();
+  }
+
+  // ---------- Notes (read-only) ----------
+  function renderNotes(notes){
+    const el = document.getElementById("notesList");
+    if (!notes || !notes.length){
+      el.innerHTML = "<span class='muted'>No notes yet.</span>";
+      return;
+    }
+
+    el.innerHTML = notes.map(n => {
+      const by = n.full_name ? esc(n.full_name) : `User #${n.user_id}`;
+      return `<div style="margin-bottom:10px">
+        <div style="font-weight:900;color:rgba(231,238,247,.92)">${by}</div>
+        <div style="color:rgba(231,238,247,.88)">${esc(n.note_text)}</div>
+      </div>`;
+    }).join("");
+  }
+
+  async function loadNotes(){
+    if (!CURRENT_INTERNAL_ID) return renderNotes([]);
+    const res = await apiFetch(`/work-orders/${CURRENT_INTERNAL_ID}/details`);
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("ADMIN NOTES GET ERROR:", res.status, t);
+      renderNotes([]);
+      return;
+    }
+    const data = await res.json();
+    renderNotes(data.notes || []);
+  }
+
+  // ---------- Files (read-only) ----------
+  function openImage(url){ window.open(API + url, "_blank"); }
+  window.__openImg = openImage;
+
+  function renderGrid(elId, items, singleLatest=false){
+    const el = document.getElementById(elId);
+    const list = (items || []);
+    const shown = singleLatest ? list.slice(0,1) : list;
+
+    el.innerHTML = shown.map(f => `
+      <div class="thumb" title="Click to open" onclick="window.__openImg('${f.url}')">
+        <img src="${API + f.url}" alt="">
+      </div>
+    `).join("");
+
+    if (!shown.length){
+      el.innerHTML = `<div class="muted">No files.</div>`;
+    }
+  }
+
+  async function loadFiles(){
+    if (!CURRENT_INTERNAL_ID) {
+      renderGrid("beforeGrid", []);
+      renderGrid("afterGrid", []);
+      renderGrid("signoffGrid", [], true);
+      return;
+    }
+
+    const res = await apiFetch(`/work-orders/${CURRENT_INTERNAL_ID}/files`);
+    if (!res.ok){
+      const t = await res.text().catch(()=> "");
+      console.log("ADMIN FILES GET ERROR:", res.status, t);
+      renderGrid("beforeGrid", []);
+      renderGrid("afterGrid", []);
+      renderGrid("signoffGrid", [], true);
+      return;
+    }
+    const files = await res.json();
+    renderGrid("beforeGrid", files.before || []);
+    renderGrid("afterGrid", files.after || []);
+    renderGrid("signoffGrid", files.signoff || [], true);
+  }
+
+  async function refreshAll(){
+    const w = await loadWOByNumber();
+    if (w) await renderWO(w);
+    await loadNotes();
+    await loadFiles();
+  }
+
+  async function logout(){
+    await apiFetch("/auth/logout", { method:"POST" });
+    window.location.href="login.html";
+  }
+
+  document.getElementById("backBtn").addEventListener("click", ()=> window.location.href="admin-work-orders.html");
+  document.getElementById("logoutBtn").addEventListener("click", logout);
+  document.getElementById("saveBtn").addEventListener("click", saveWO);
+  document.getElementById("reloadBtn").addEventListener("click", refreshAll);
+
+  document.getElementById("clientSel").addEventListener("change", async (e) => {
+    await loadStoresForClient(e.target.value, null);
+  });
+
+  (async function init(){
+    if (!wo){ showErr("Missing work order number in URL. Use ?wo=WORK_ORDER_NUMBER"); return; }
+    await requireAdmin();
+    await loadDispatchers();
+    await loadClients();
+    fillStatusOptions();
+    await refreshAll();
+  })();
+</script>
+</body>
+</html>
